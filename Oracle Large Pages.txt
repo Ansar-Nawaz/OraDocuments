@@ -1,0 +1,71 @@
+Oracle large pages are functionally equivalent to huge pages in Linux.  Large pages are an operating system construct similar to 
+RAM "fencing" which pins the RAM, making it ineligible for swapping.  Oracle large pages locks- out any defined portion of system memory 
+for large items, and Oracle large pages are commonly used for the Oracle SGA RAM region.  Moving the SGA exclusively into large page 
+system memory, ensures that there are no swaps (vmstat page-out or page-in operations) from SGA operations, and Oracle large pages removes 
+a significant amount of pressure from the SQL cache (shared_pool_size, db_cache_size, &c).  
+
+With the SGA entirely pinned into  system memory with Oracle large pages, we are also saving resources on cache swaps required for the data 
+buffer and library cache areas.  
+
+Oracle large pages support began in Oracle 10g Release 1.  Because of new operating system support, Oracle 10g Release 1 or later can make 
+use of processor memory addressing resources for more efficient page usage.  When large page support is enabled, the Oracle Database buffers 
+will be more quickly accessible by the CPU.
+
+This is because instead of loading the buffers in the default 4 kb internal OS buffer page size, the pages are loaded in increments of 
+2 MB (or larger, depending on the chipset and total system memory available).  This Oracle large page size reduces the total number of data 
+pages required to allocate the SGA at startup time and reduces the CPU time needed to handle the virtual memory translations because the SGA 
+structures and guaranteed to be in RAM.  
+
+Oracle recommends specifying enough large pages to contain the entire SGA region (as defined by sga_max_size). 
+The Oracle instance attempts to allocate large pages when the lock_sga parameter is set to true. If the SGA size exceeds the size of memory 
+available for pinned or large pages, then the portion of the SGA exceeding these sizes is allocated to ordinary shared memory and are 
+eligible for swap-in operations, which can serious degrade application performance.    
+
+Large Pages on Linux:
+
+To enable large pages in Linux, follow these steps.  
+
+You will need to know the default large page size, which can be accomplished with the command :  # grep Hugepagesize /proc/meminfo  
+You need to know the size of the largest SGA * 1024.  
+Set the number of large pages by setting the vm.nr_hugepages kernel parameter to specify the number of large pages you want to reserve. 
+This number must be at least large enough to hold the entire SGA.  
+For example, if /proc/meminfo tells you the large page size is 4 MB and the total SGA size is 512 MB, then the value for vm.nr_hugepages 
+must be 128.    
+
+Large Pages on Solaris:  
+
+Under Solaris, Oracle uses large pages by default, and will be 4MB or larger, depending on the specific hardware configuration.    
+If you want to verify the size of the pages, you can do so from within the Oracle server process by running pmap -x*s*  
+
+A word of caution, if you are using pageable large pages within your Solaris system, Oracle will need to reserve enough swap space the size 
+of your entire SGA or the instance will fail to start.      
+
+Large Pages on HP/UX:  
+
+On HP-UX, Oracle Database uses the largest virtual memory page size setting available for process-private memory (defined by L).   
+When the virtual memory page size is set to L, HP-UX allocates the available memory to pages of 1MB, 4MB, 16MB, etc, until it reaches 
+the 1BG limit, or until it reaches the total amount of allocated memory.   If you allocate enough memory to Oracle for the operating system 
+to be able to allocate memory in larger data page size units, then the operating system will allocate the maximum page size at once.        
+
+Large Pages on Windows:
+
+ To enable large pages in Windows, make sure that the Windows registry keys ORA_LPENABLE and ORA_LPSIZE are defined  as a string (REG_SZ) 
+datatype.  Here is the Oracle10g Windows registry entry for ora_lpenable to enable large page support in Windows:
+
+ "ORA_LPENABLE" = "1"    
+
+Large Pages on AIX:
+
+ For AIX Oracle large page support, give the Oracle user ID the CAP_BYPASS_RAC_VMM and CAP_PROPAGATE capabilities by following these steps:  
+
+First check the current capabilities: #lsuser â€“a capabilities oracle
+Note: only the root user can display the capabilities attribute.
+ Add the CAP_BYPASS_RAC_VMM and CAP_PROPAGATE capabilities to the list of capabilities already assigned to this user ID, if any:
+
+#chuser capabilities=CAP_BYPASS_RAC_VMM,CAP_PROPAGATE oracle
+ Configure the AIX large page pool by calculating the number of large pages required for the SGA:
+
+num_of_large_pages = INT((total_SGA_size-1)/16MB)+1
+ Configure the number and size of large pages:
+
+#vmo -p -o lgpg_regions=num_of_large_pages -o lgpg_size=16777216  
